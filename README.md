@@ -1,0 +1,1 @@
+[![View Four-Cylinder Engine Ignition Control Simulation on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)](https://www.mathworks.com/matlabcentral/fileexchange/69271-four-cylinder-engine-ignition-control-simulation)

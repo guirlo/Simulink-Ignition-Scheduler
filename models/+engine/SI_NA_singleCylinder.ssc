@@ -1,0 +1,506 @@
+component SI_NA_singleCylinder
+% Four-stroke Engine Cylinder Model (r10)
+% This is a four-stroke spark ignited (SI), naturally aspirated (NA), single
+% cylinder component.
+%
+% Engine speed up to 7000 RPM
+%
+% Use two or more of this component to build L3, L4, V6 engines and so on.
+
+% The formulation of engine dynamics in this component is largely based on the
+% following book:
+%
+%   [EN14] Lars Eriksson, Lars Nielsen,
+%          "Modeling and Control of Engines and Drivelines", Wiley (2014)
+%
+% Air system:
+% - Intake manifold pressure, Pim, and intake air flow rate are the inputs to
+%   this component.
+% - Valve Timing (VT) is fixed in this model, i.e. there is no Variable Valve
+%   Timing (VVT).  This greatly simplifies the modeling of internal combustion
+%   engine dynamics, but it also limits the estimation capability of the model.
+%   For the purpose of demonstrating the real-time OS scheduler modeling on the
+%   controller side, the current design is fine, but for future improvement,
+%   adding VVT would be one of the most significant aspects to consider.
+% - Air mass flow from intake is used to compute the engine load (KL).  Then,
+%   the flow rate is used to compute the exhaust gas heat flow rate.
+%
+% Fuel system:
+% - This model accepts the air-fuel ratio (AFR) as an input, but there is no
+%   fuel dynamics, meaning that the specified AFR is directly used to determine
+%   the amount of heat to be produced by combustion.  This fuel model is not as
+%   much tested as the other engine dynamics factors.  It is recommended to keep
+%   AFR at gasoline stoichiometry of 14.6 or 14.7.
+%
+% Spark:
+% - This model receives SA (spark advance) as a discrete event.
+%
+% Combustion:
+% - Combustion dynamics is based on EN14's Model 7.16 "Analytic In-cylinder
+%   Pressure Model" with slight simplification as well as slight complication.
+%   Due to the analytic nature, the calculation of the combustion pressure
+%   profile as a function of crank angle is light weight, and yet the model can
+%   predict in-cycle torque profile at an accuracy sufficient for the real-time
+%   OS scheduler modeling purpose.
+%
+% Exhaust-Gas-Recirculation (EGR):
+% - Both internal and external EGRs are ignored in this model.
+%
+% Four-stroke cycle:
+% - This model treats very low engine speed separately from normal engine speed.
+%   See the modecharts.
+%
+% Crank rotational dynamics:
+% - This component can receive rotational speed as an input from the rotational
+%   node R.
+% - This component can also receive torque as an input from the rotational node
+%   R, which allows the use of a starter motor to start this engine.
+
+  % left
+  inputs
+    % rise from 0 to 1 at ignition timing
+    fire = 0;  % ig:left
+
+    % air/fuel ratio
+    afr_in = 0;  % AFR:left
+
+    % Intake manifold pressure
+    Pim = { 101.325  'kPa' };  % Pim:left
+
+    % Mass flow into cylinder
+    mdot = { 0  'g/s' };  % mdot:left
+  end
+  variables (Access=private)
+    afr = 0;
+  end
+  equations
+    afr == max(10, min(20, afr_in));
+  end
+
+  % right
+  outputs
+    % Crank position, crkpos, is between 0 and 720 degrees.
+    crkpos = { 0  'rad' };  % cpos:right
+  end
+  nodes
+    R = foundation.mechanical.rotational.rotational;  % R : right
+  end
+  outputs
+    % Engine-out gas temperature
+    Teo = { 273.15+25  'K' };  % Teo:right
+
+    % Engine-out heat flow
+    Weo = { 0  'J/s' };  % Weo:right
+
+    % Engine load (%)
+    KL_out = { 0 '1' };  % KL:right
+
+    % Engine speed
+    w = { 0  'rad/s' };  % w:right
+  end
+  equations
+    KL_out == KL;
+  end
+
+  % Acausal connection variables
+  variables (Access=private)
+    trq = { 0  'N*m' };  % trq:left
+  end
+  branches  % 'through' equations
+    trq : * -> R.t;  % R.t == -trq;
+  end
+  equations  % 'across' equations
+    w == R.w;
+  end
+
+  parameters
+    ca0 = { 0  'deg' };  % Initial crank position, ca0 (0-720 CAdeg)
+  end
+
+  parameters (Access=private)
+  % ambient
+
+    Pamb = { paramfcn_ambient_p_kPa(), 'kPa' };
+    Tamb = { paramfcn_ambient_T_K(), 'K' };
+    rho_air = { paramfcn_gas_density_air_mg_percc(), 'mg/cm^3' };
+
+  % hardware specs
+
+    B = { paramfcn_cylinder_Bore_mm(), 'mm' };
+    Lstroke = { paramfcn_cylinder_Stroke_mm(), 'mm' };
+    l = { paramfcn_cylinder_Conrod_mm(), 'mm' };
+    r_c = paramfcn_cylinder_CompRatio();
+
+    V_d = pi*(B/2)^2*Lstroke;  % displaced volume / swept volume
+    V_c = V_d/(r_c - 1);  % clearance volume
+    a = Lstroke/2;  % crank radius
+
+  % valve timings
+
+    IVO = { 10  'deg' };  % intake valve open
+      % IVO is usually before TDC.  IVO=10 is rather late, but it is designed to
+      % avoid the valve overlap.
+    IVC = { 180+20  'deg' };  % intake valve close
+      % Ideally, IVC should be around 40 degBTDC for slow RPM and retarded
+      % towards around 5 degATDC as the engine speed increases.
+
+    EVO = { 360+180-10  'deg' };  % exhaust valve open
+    EVC = { 5  'deg' };  % exhaust valve close (no overlap with IVO)
+      % EVC=0 causes random skippings in capturing the event "edge( crkpos > EVC )"
+      % to compute Tcyl_evo.
+
+  % gas in cylinder
+
+    Mcyl_100 = rho_air * (V_d + V_c);  % Gas mass at 100% charge (KL=100)
+
+    k_valve = 0.3;  % KL coefficient
+      % Coefficient to approximately compute KL (engine load).
+      % See comments where Mcyl_ivc is computed.
+
+  % combustion
+
+    % parameters to define the shape of combustion profile
+    comb_a = paramfcn_cylinder_gas_Wiebe_a();
+    comb_m = paramfcn_cylinder_gas_Wiebe_m();
+    comb_bd = { paramfcn_cylinder_gas_Wiebe_burnDuration_deg(), 'deg' };
+      % Burn duration is a function of many factors in the real system, but it
+      % is assumed constant here for simplicity.  If we want to introduce one
+      % more complexity in the combustion simulation, one possibility is to treat
+      % the burn duration as a function of engine speed, rather than a constant.
+
+    k_c = paramfcn_cylinder_gas_Gamma_compression();
+    k_e = paramfcn_cylinder_gas_Gamma_expansion();
+
+    Cv_c = { paramfcn_cylinder_gas_Cv_comp_J_perkg_perK(), 'J/kg/K' };
+    Cp_e = { paramfcn_cylinder_gas_Cp_exp_J_perkg_perK(), 'J/kg/K' };
+    q_LHV = { paramfcn_gasoline_LHV_MJ_perkg()*1000, 'kJ/kg' };
+    AFR_s = paramfcn_gasoline_AFR_stoich();
+
+    dtExhDecay = { 5  'ms' };
+      % This is used to let the temperature of the gas exiting from exhaust
+      % valve decay.  The time duration is arbitrary.  This is more or less
+      % modeling the blowdown at EVO, but may be too simplistic.
+
+  % mode transision
+
+    % Threshold engine speeds to make transition between preIntakeMode and the
+    % other modes.
+    revLo = {  5 'rpm' };  % cross from above to below, entering preIntakeMode
+    revHi = { 10 'rpm' };  % cross from below to above, leaving preIntakeMode
+  end
+
+  variables (Access=private)
+    ca = { value=ca0, priority=priority.high };  % crank angle
+    cnt = { value=0, priority=priority.high };
+    Vcyl = { 0  'mm^3' };  % cylinder volume
+    dVdt = { 0  'mm^3/s' };
+
+    PR = 0;  % weighting function for non-combustion to combustion transition
+
+    Pcyl_c = { 0  'kPa' };  % cylinder pressure for unburned compression process
+    Pcyl_e = { 0  'kPa' };  % cylinder pressure for burned expansion process
+    Pcyl = { 0  'kPa' };  % cylinder pressure
+
+    Tcyl_c = { 0  'K' };  % cylinder temperature for unburned compression process
+    Tcyl_e = { 0  'K' };  % cylinder temperature for burned compression process
+    Tcyl = { 0  'K' };  % cylinder temperature
+  end
+
+  % crank position
+  variables (Event=true, Access=private)
+    crkPhase = 0;  % 0 for 0-360 degrees, 1 for 360-720 degrees
+  end
+  events
+  when initialevent
+    crkPhase = if ca < { 360 'deg' }, 0 else 1 end;
+  elsewhen edge( crkpos > {360 'deg'} )
+    crkPhase = 1;
+  elsewhen edge( {360 'deg'} - crkpos > 0 )
+    crkPhase = 0;
+  end  % when
+  end  % events
+
+  % spark
+  variables (Event=true, Access=private)
+    burn = 0;
+    spa = { -1  'deg' };  % spark angle
+  end
+  events
+  when edge( fire > 0.5 ) ...
+  && ({ 360-50 'deg'} < crkpos) && (crkpos < { 360+50 'deg'}) ...
+  ... % Spark angle is limited between +50degBTDC to -50degBTDC.
+  && ((Tcyl_c > { 273.15+100 'K'}) && (Pcyl_c > { 200 'kPa'}))
+    % capture the edge for a valid spark command
+
+    % Gas temperature and pressure need to be high enough for combustion to
+    % occur, but knowing the thresholds is hard.  The values above are just to
+    % simulate a case where combustion cannot occur if the temperature and
+    % pressure are too low.
+
+    burn = 1;
+    spa = crkpos;  % spark angle is current crank position
+
+  elsewhen edge( { 360 'deg'} - crkpos > 0 )
+    burn = 0;
+    spa = { -1 'deg' };
+  end  % when
+  end  % events
+
+  % intake valve
+  variables (Event=true, Access=private)
+    time_ivo = { 0  's' };  % Time upon IVO
+    dt_IVOpen = { 0  's' };  % duration from IVO to IVC
+    Mcyl_ivc = { 0  'g' };  % Gas mass stored from IVO to IVC
+    KL = 0;  % Engine load
+
+    V_ivc = { 0  'mm^3' };  % Cylinder volume at IVC
+    P_ivc = { 101.325  'kPa' };  % Pressure at IVC
+    T_ivc = { 273.15 + 25  'K' };  % Temperature at IVC
+
+    % Ideal Otto cycle pressures.  See Figure 5.5 in [EN14] for where the '2'
+    % and '3' are in the cycle.
+    V_23 = { 0  'mm^3' };  % Cylinder volume at Otto-cycle states 2-to-3
+    p2_Otto = { 0  'kPa' };  % pressure at the start of combustion
+    p3_Otto = { 0  'kPa' };  % pressure at the end of combustion
+    T2_Otto = { 0  'K' };  % temperature at the start of combustion
+    T3_Otto = { 0  'K' };  % temperature at the end of combustion
+    dTcomb = { 0  'K' };  % Temperature increase due to combustion.
+  end
+  events
+  when edge( crkpos > IVO )
+    time_ivo = time;
+  elsewhen edge( crkpos > IVC )
+    % Variables on LHS within a when-clause get updated *at once*, meaning
+    % that the following code is NOT executed line by line.  Be very careful
+    % not to use LHS vars in RHS in other lines unless you know what you are doing.
+
+    dt_IVOpen = time - time_ivo;
+
+    Mcyl_ivc = min(Mcyl_100, k_valve*mdot*(time - time_ivo));
+      % Mass of air-fuel mixture, charged in cylinder between IVO and IVC.
+      % Ideally, mdot should be integrated over time from IVO to IVC.
+      % The above formula, k_valve*mdot*(time - time_ivo), is an approximation.
+      % The front factor k_valve is to consider the flow ristriction, i.e., gas
+      % cannot flow into cylinder through intake valve at the speed of mdot
+      % when the valve is starting to open or to close.  The number for k_valve
+      % was determined from simulation.
+    KL = min(Mcyl_100, k_valve*mdot*(time - time_ivo)) / Mcyl_100 * 100;
+      % Mcyl_ivc and KL are upper-bounded at KL 100%, which is for Naturally
+      % Asprirated engines.  Check this KL to see if this cylinder component
+      % is receiving appropriate mass flow mdot.
+
+    P_ivc = Pim;
+    T_ivc = Tamb;
+
+    V_ivc = cylinder_volume_sscfcn(IVC, V_d, a, l, B);
+    V_23 = cylinder_volume_sscfcn(spa, V_d, a, l, B);
+    dTcomb = q_LHV * min(1, afr/AFR_s) / ((afr + 1)*Cv_c);  % EN14-(7.44)
+
+  elsewhen edge( crkpos > { value(IVC,'deg') + 5, 'deg'} )
+    p2_Otto = P_ivc*( V_ivc / V_23 )^k_c;
+    T2_Otto = T_ivc*( V_ivc / V_23 )^(k_c - 1);
+
+  elsewhen edge( crkpos > { value(IVC,'deg') + 10, 'deg'} )
+    T3_Otto = T2_Otto + dTcomb;  % EN14-(7.45)
+
+  elsewhen edge( crkpos > { value(IVC,'deg') + 15, 'deg'} )
+    p3_Otto = p2_Otto * T3_Otto / T2_Otto;  % EN14-(7.45)
+  elsewhen edge( abs(w) < revLo )
+    dt_IVOpen = { 0 's' };
+    Mcyl_ivc = { 0 'g' };
+    KL = 0;
+  end  % when
+  end  % events
+
+  % exhaust valve
+  variables (Event=true, Access=private)
+    t_evo = { 0  's' };  % the moment of EVO
+    Tcyl_evo = { 273.15+25  'K' };  % Cylinder gas temperature
+  end
+  events
+    when edge( crkpos > EVO - { 1 'deg' } )
+      t_evo = time;
+      Tcyl_evo = Tcyl;
+    elsewhen edge( crkpos > EVC )
+      Tcyl_evo = Tamb;
+    end
+  end
+
+  modecharts (ExternalAccess = observe)
+  mc1 = modechart  % logged as "internal_mode_var_mc1__"
+
+    % This is a simplified version of "Analytical In-cylinder Pressure Model"
+    % in EN14 (page 184, Model 7.16).  The pre*Modes are unique to this code
+    % and were added to deal with very low engine speed situation.
+
+    modes
+    mode preIntakeMode  % 1
+      equations
+        Pcyl == Pim;
+        Tcyl == Tamb;
+
+        Teo == Tamb;
+        Weo == 0;
+
+        % These variables in this mode do not matter for simulation.
+        % Some reasonable values are assigned to make the logged traces look ok.
+        PR==0;  Pcyl_c==Pcyl;  Pcyl_e==0;  Tcyl_c==Tamb;  Tcyl_e==Tamb;
+      end
+    end  % mode
+    mode preCompExpMode % 2
+      equations
+        PR==0;
+
+        Pcyl_c == P_ivc*( V_ivc / Vcyl )^k_c;
+        Pcyl_e == 0;
+        Pcyl == Pcyl_c;
+
+        Tcyl_c == Tamb;
+        Tcyl_e == 0;
+        Tcyl == Tcyl_c;
+
+        Teo == Tamb;
+        Weo == 0;
+      end
+    end
+    mode preExhaustMode  % 3
+      equations
+        Pcyl == Pamb;
+        Tcyl == Tamb;
+
+        Teo == Tamb;
+        Weo == 0;  % heat flow through exhaust is ignored here for simplicity
+
+        % These variables in this mode do not matter for simulation.
+        % Some reasonable values are assigned to make the logged traces look ok.
+        PR==0;  Pcyl_c==Pcyl;  Pcyl_e==0;  Tcyl_c==Tamb;  Tcyl_e==Tamb;
+      end
+    end
+    mode intakeMode  % 4
+      equations
+        Pcyl == Pim;
+        Tcyl == Tamb;
+
+        Teo == Tamb;
+        Weo == 0;
+
+        % These variables in this mode do not matter for simulation.
+        % Some reasonable values are assigned to make the logged traces look ok.
+        PR==0;  Pcyl_c==Pcyl;  Pcyl_e==0;  Tcyl_c==Tamb;  Tcyl_e==Tamb;
+      end
+    end  % mode
+    mode compExpMode  % 5
+      % compression & expansion (from IVC to EVO)
+      % designed in "Combustion Process"
+      equations
+        if KL < 5  % KL too low
+          Pcyl == P_ivc;
+          Tcyl == Tamb;
+
+          PR==0;  Pcyl_c==Pcyl;  Pcyl_e==0;  Tcyl_c==Tamb;  Tcyl_e==Tamb;
+        else
+          PR == if (not(burn) || crkpos < spa), 0 else ...
+            1 - exp( -comb_a*( (crkpos - spa)/comb_bd )^(comb_m + 1) ) end;
+            % EN14-(5.30)
+
+          % EN14-(7.40)
+          Pcyl_c == P_ivc*( V_ivc / Vcyl )^k_c;
+          Tcyl_c == T_ivc*( V_ivc / Vcyl )^(k_c - 1);
+
+          % EN14-(7.43) with correction factor (right-most)
+          Pcyl_e == p3_Otto*( V_23 / Vcyl )^k_e       ...
+                      *(1 - (0.3/90)*(360-value(spa,'deg'))); % break symmetry
+          Tcyl_e == T3_Otto*( V_23 / Vcyl )^(k_e - 1) ...
+                    *(0.5*(1+0.8)-(1-0.8)/100*(360-value(spa,'deg'))); % likewise
+
+          Pcyl == (1 - PR)*Pcyl_c + PR*Pcyl_e;  % EN14, first equation in 7.8.3
+          Tcyl == (1 - PR)*Tcyl_c + PR*Tcyl_e;
+        end  % if,else
+
+        Teo == Tamb;
+        Weo == 0;
+      end  % equations
+    end  % mode
+    mode exhaustMode  % 6
+      equations
+        Teo == max( Tamb, Tcyl_evo * exp(-(time - t_evo)/dtExhDecay) );
+        Weo == k_valve*Cp_e*mdot*Teo;
+          % The use of mdot may have to be replaced with mdot at IVC.
+
+        Pcyl == Pamb + { 50 'kPa' }/{ 7000 'rpm' }*abs(w);
+          % Back pressure is higher than the ambient pressure due to flow
+          % restrictions in the exhaust system.  See Figure 7.6, bottom left
+          % panel in EN14.  The above formula is a crude approximation.
+
+        Tcyl == Tamb;
+
+        % These variables in this mode do not matter for simulation.
+        % Some reasonable values are assigned to make the logged traces look ok.
+        PR==0;  Pcyl_c==Pcyl;  Pcyl_e==0;  Tcyl_c==Tamb;  Tcyl_e==Tamb;
+      end
+    end  % mode
+    end  % modes
+
+    initial
+      preExhaustMode : (0   <= ca0) && (ca0 <  EVC);  % 3
+      preIntakeMode  : (EVC <= ca0) && (ca0 <  IVC);  % 1
+      preCompExpMode : (IVC <= ca0) && (ca0 <  EVO);  % 2
+      preExhaustMode : (EVO <= ca0) && (ca0 <= 720);  % 3
+    end
+
+    transitions
+      preIntakeMode  -> preCompExpMode : (crkPhase==0) && (crkpos > IVC);
+      preCompExpMode -> preExhaustMode : (crkPhase==1) && (crkpos > EVO);
+
+      preExhaustMode -> preIntakeMode : ...
+        (w <= revHi) && (crkPhase==0) && (crkpos > IVO);
+      preExhaustMode -> intakeMode : ...
+        (w > revHi) && (crkPhase==0) && (crkpos > IVO);
+
+      intakeMode  -> compExpMode : (crkPhase==0) && (crkpos > IVC);
+      compExpMode -> exhaustMode : (crkPhase==1) && (crkpos > EVO);
+      exhaustMode -> intakeMode  : (crkPhase==0) && (crkpos > IVO);
+
+      intakeMode  -> preIntakeMode  : abs(w) < revLo;
+      compExpMode -> preCompExpMode : abs(w) < revLo;
+      exhaustMode -> preExhaustMode : abs(w) < revLo;
+    end
+
+  end  % modechart
+  end  % modecharts
+
+  function setup
+    Vcyl = {cylinder_volume_mm3_matlab( value(ca0,'rad'), value(V_c,'mm^3'), ...
+              value(a,'mm'), value(l,'mm'), value(B,'mm') ) ...
+            , 'mm^3' };
+  end
+
+  equations  % constitutive equations
+
+    % Crank rotational dynamics:
+    der(ca) == w;
+    cnt == floor(ca/(4*pi));  % count up at each 720-degree cycle
+    crkpos == ca - cnt*(4*pi);
+      % Crank position crkpos is defined as a value between 0 and 720 degrees.
+
+    % Combustion chamber mechanics:
+    % - designed in the "Piston Mechanics" Live Script.
+    Vcyl == cylinder_volume_sscfcn( ca, V_c, a, l, B );
+    dVdt == pi*B^2/4*(a*sin(ca) + a^2*cos(ca)*sin(ca)/sqrt(l^2 - a^2*sin(ca)^2))*w;
+
+    % Torque dynamics:
+    % - requires cylinder pressure which is computed in the mode chart above.
+    let
+      w1 = 0.1;
+    in
+      if value(w,'rad/s') < w1
+        % Taylor expansion of 1/w around w1 to avoid (1/w -> infinity)
+        % due to near devide-by-zero:
+        trq == (Pcyl - Pamb)*dVdt*(w1 + 1/w1 - value(w,'rad/s'))*{1 '1/(rad/s)'};
+      else
+        trq == (Pcyl - Pamb)*dVdt/w;
+      end
+    end
+
+  end  % equations
+end  % components

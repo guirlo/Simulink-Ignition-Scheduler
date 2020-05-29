@@ -1,0 +1,69 @@
+component exhaustThermal
+% Exhaust Thermal System
+
+% Reference
+% [EN14] Eriksson, Nielsen, "Modeling and Control of Engines and Drivelines",
+% Wiley (2014):
+%   - 7.11 Heat Transfer and Exhaust Temperatures(p.196-203)
+%   - A.4 Heat Transfer Basics (p.529-539)
+%
+% Note that the Model 7.21 "Dynamic Temperature Model" for exhaust system in
+% EN14 is for the mean-value engine model whereas this component is designed for
+% use with in-cycle engine model.
+%
+% This model has to deal with high frequency intermittent inputs of very high
+% temeprature gas flow from exhaust valves (W_gas_in in the code below), which
+% is filtered with a single time constant dynamics.
+
+  % left
+  inputs
+    % engine-out heat flow (right outside the exhaust valve)
+    Weo_1 = { 0  'W' };  % W1:left
+    Weo_2 = { 0  'W' };  % W2:left
+    Weo_3 = { 0  'W' };  % W3:left
+    Weo_4 = { 0  'W' };  % W4:left
+  end
+
+  % right
+  outputs
+    % Wall temperature of exhaust pipe
+    % (consider this as catalytic converter temperature)
+    T_wall_out = { 0  'K' };  % Tw:right
+  end
+  equations
+    T_wall_out == T_wall;
+  end
+
+  parameters (Access=private)
+    k_gas = { paramfcn_exhaust_heatFlowTimeConst_s(), 's' };
+
+    T_amb = { paramfcn_ambient_T_K(), 'K' };
+    A = { paramfcn_exhaust_Area_m2(), 'm^2' };
+    h_convec_ext = { paramfcn_exhaust_convecHeatCoeff_ext_W_perm2_perK(), 'W/m^2/K' };
+    h_rad = { paramfcn_exhaust_radiationHeatCoeff_W_perm2_perK4(), 'W/m^2/K^4' };
+    k_wall = { paramfcn_exhaust_k_J_perK(), 'J/K' };
+  end
+
+  variables (Access=private)
+  % differential variables
+    T_wall = { value=T_amb, priority=priority.high };
+      % Consider the wall temperature as the temperature of catalytic converter
+
+    W_gas = { 0  'W' };  % heat flow rate
+
+  % algebraic variables
+    W_gas_in = { 0  'W' };
+    Qdot_ext = { 0  'W' };
+  end
+
+  equations
+    W_gas_in == Weo_1 + Weo_2 + Weo_3 + Weo_4;
+    der(W_gas) == (1/k_gas)*(W_gas_in - W_gas);
+      % W_gas_in is instantaneous.  Make it more like mean-value with W_gas.
+
+    Qdot_ext == A*(h_convec_ext*(T_wall - T_amb) + h_rad*(T_wall^4 - T_amb^4));
+      % This basically corresponds to dQe/dt in Model 7.21 in EN14.
+
+    k_wall*der(T_wall) == W_gas - Qdot_ext;
+  end
+end

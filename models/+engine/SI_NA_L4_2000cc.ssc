@@ -1,0 +1,85 @@
+component SI_NA_L4_2000cc
+% SI NA L4 2.0L
+% Spark-Ignition,
+% Naturally Aspirated,
+% Inline 4 (Longitudinal 4),
+% 2.0-liter,
+%
+% To build a complete engine model, connect an inertia and a damper.
+
+  inputs
+      
+    % Rise edges indicating the moment of spark
+    ig1 = 0 ;  % ig1:left
+    ig2 = 0 ;  % ig2:left
+    ig3 = 0 ;  % ig3:left
+    ig4 = 0 ;  % ig4:left
+      
+
+    % Throttle angle, 0 to 90 degrees
+    thr_cmd = { 0  'deg' };  % THR:left
+      % Note that there is a leakage area in the throttle model.
+      % Thus, thr_cmd=0 still has some small opening area.
+      % See the source of intake model for more details.
+  end
+
+  % right
+  nodes
+    R = foundation.mechanical.rotational.rotational;  % R : right
+  end
+  outputs
+    % Crank position, crkpos, is between 0 and 720 degrees.
+    crkpos = { 0  'rad' };  % cpos:right
+    T_exwall = { 273.15+25  'K' };  % Tew:right
+  end
+
+  components (ExternalAccess=observe)
+    intake  = engine.intakeIsothermal();
+    cyl_1   = engine.SI_NA_singleCylinder(ca0={720/4*0,'deg'});
+    cyl_2   = engine.SI_NA_singleCylinder(ca0={720/4*3,'deg'});
+    cyl_3   = engine.SI_NA_singleCylinder(ca0={720/4*1,'deg'});
+    cyl_4   = engine.SI_NA_singleCylinder(ca0={720/4*2,'deg'});
+    exhaust = engine.exhaustThermal();
+    AFR = foundation.physical_signal.sources.Constant(constant = { 14.7, '1' });
+  end
+
+  connections
+  % to intake
+    connect(thr_cmd,   intake.thr_cmd);
+    connect(cyl_1.w,   intake.w);
+
+  % cylinders
+    connect(AFR.O, cyl_1.afr_in);
+    connect(AFR.O, cyl_2.afr_in);
+    connect(AFR.O, cyl_3.afr_in);
+    connect(AFR.O, cyl_4.afr_in);
+
+    connect(ig1, cyl_4.fire);
+    connect(ig2, cyl_3.fire);
+    connect(ig3, cyl_1.fire);
+    connect(ig4, cyl_2.fire);
+
+    connect(intake.p_im_out, cyl_1.Pim);
+    connect(intake.p_im_out, cyl_2.Pim);
+    connect(intake.p_im_out, cyl_3.Pim);
+    connect(intake.p_im_out, cyl_4.Pim);
+
+    connect(intake.mdot_tocyl, cyl_1.mdot);
+    connect(intake.mdot_tocyl, cyl_2.mdot);
+    connect(intake.mdot_tocyl, cyl_3.mdot);
+    connect(intake.mdot_tocyl, cyl_4.mdot);
+
+  % to exhaust
+    connect(cyl_1.Weo, exhaust.Weo_1);
+    connect(cyl_2.Weo, exhaust.Weo_2);
+    connect(cyl_3.Weo, exhaust.Weo_3);
+    connect(cyl_4.Weo, exhaust.Weo_4);
+
+  % acausal crank shaft
+    connect(R, cyl_1.R, cyl_2.R, cyl_3.R, cyl_4.R);
+
+  % outputs
+    connect(cyl_1.crkpos, crkpos);
+    connect(exhaust.T_wall_out, T_exwall);
+  end
+end

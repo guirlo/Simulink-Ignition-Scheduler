@@ -1,0 +1,7 @@
+function y = cylinder_volume_sscfcn(ca, V_c, a, l, B)
+%% compute cylinder volume at a given crank angle
+% ca_rad is assumed to be a scalar (1-by-1 double).
+  definitions
+    y = V_c + (pi/4)*B^2*(a + l - a*cos(ca) - sqrt(l^2 - a^2*sin(ca)^2) );
+  end
+end

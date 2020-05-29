@@ -1,0 +1,155 @@
+component intakeIsothermal
+% Intake Air System
+% Designed for the naturally aspirated engines
+
+% Equations used in this component were designed and checked in the Live Scripts
+% in the designEngineIntake folder.
+
+% The air flow dynamics in this component is Model 7.7 "Isothermal Volume",
+% equation (7.24) in [EN14].
+%
+% Reference:
+% [EN14] Lars Eriksson, Lars Nielsen, "Modeling and Control of Engines and
+%   Drivelines", Wiley (2014), ISBN: 978-1-118-47999-5
+
+  % left
+  inputs
+    thr_cmd = { 0  'deg' };  % deg:left
+    w = { 0  'rad/s' };  % w:left
+  end
+
+  % right
+  outputs
+    % Air mass flow into cylinder
+    mdot_tocyl = { 0  'g/s' };  % mdot:right
+
+    % intake manifold pressure
+    p_im_out = { 0  'kPa' };  % Pim:right
+
+    % Throttle open area
+    S_thr = { 0  'cm^2' };  % S:right
+
+    flowMode = 0;  % mode:right
+  end
+  equations
+    p_im_out == p_im;
+  end
+
+  parameters (Access=private)
+    p_im_0 = { paramfcn_intake_p_im_0_kPa(), 'kPa' };
+      % Initial intake pressure
+
+    p_amb = { paramfcn_intake_p_amb_kPa(), 'kPa' };
+    T_amb = { paramfcn_intake_p_amb_kPa(), 'K' };
+
+    thr_rest = { paramfcn_intake_thr_rest_deg(), 'deg' };
+    D_thr = { paramfcn_intake_D_thr_cm(), 'cm' };
+    S_leak = { paramfcn_intake_S_leak_cm2(), 'cm^2' };
+
+    V_im = { paramfcn_intake_V_im_cm3(), 'cm^3' };
+      % V_im acts like an inertia of the gas and affects the pressure dynamics
+      % while it has no effect on the flow rate.  See the equations where V_im
+      % is used.
+
+    V_D = { paramfcn_intake_V_D_cm3(), 'cm^3' };  % for all cylinders
+
+  % Volumetric efficiency parameters
+    ve0 = paramfcn_intake_ve0();  % Volumetric efficiency (eta_v) at RPM=0
+    ve1spd = { paramfcn_intake_ve1spd_rpm(), 'rpm' };  % Engine speed at eta_v peak
+    ve1 = paramfcn_intake_ve1();  % Peak value of eta_v
+    ve2spd = { paramfcn_intake_ve2spd_rpm(), 'rpm' };  % Maximum engine speed for eta_v
+    ve2 = paramfcn_intake_ve2();  % eta_v value at max engine speed
+  end
+  equations
+    assert( 0 <= thr_rest && thr_rest < 10 )
+  end
+
+  parameters (Access=private)
+  % dry air parameters
+    R_air = { paramfcn_gas_R_air_J_perkg_perK(), 'J/kg/K' };
+    kappa = paramfcn_gas_gamma_air();
+
+  % throttle parameters
+    c_thr = { 0.01  's' };  % delay characteristic time (arbitrary)
+    k = throttleOpenAreaCoeff( ...
+          value(S_leak,'cm^2'), value(D_thr,'cm'), value(thr_rest,'deg') );
+
+  % orifice flow mode thresholds
+    pr_lam = 0.999;  % laminar flow threshold (arbitrary)
+    pr_cr = (2/(kappa + 1))^(kappa/(kappa - 1));  % critical pressure ratio
+
+  % orifice flow parameters
+    ca = (kappa + 1)/kappa;
+    cb = 2/kappa;
+    c1 = sqrt( c2*(pr_lam^cb - pr_lam^ca))/(1 - pr_lam);
+    c2 = 2*kappa/(R_air*(kappa - 1));
+    c3 = sqrt(kappa/R_air*pr_cr^ca);
+
+  % volumetric efficiency parameters
+    s = volumetricEfficiencyParams( ...
+          ve0, value(ve1spd,'rad/s'), ve1, value(ve2spd,'rad/s'), ve2 );
+  end
+  equations
+    assert( numel(k)==4 );
+    assert( numel(s)==4 );
+  end
+
+  variables (Access=private)
+    a_thr = { 0 'deg' };  % throttle angle command (w/ uppwer/lower limit)
+    a_d = { 0 'deg' };  % delayed throttle angle
+    mdot_thr = { 0 'g/s' };
+
+    eta_spd = 1.0;  % volumetric efficiency as a function of engine speed
+    eta_vol = 1.0;  % volumetric efficiency
+
+    p_im = { value=p_im_0, priority=priority.high };
+  end
+
+  equations  % constitutive equations
+  % throttle command to throttle area
+    a_thr == max(thr_rest, min(thr_cmd, {90 'deg'}));
+    der(a_d) == -1/c_thr*(a_d - a_thr);
+
+    % Throttle open area estimation using polynomial for improved accuracy:
+    let
+      aa = value(a_d, 'rad');
+    in
+      S_thr == { k(1) + k(2)*aa + k(3)*aa^2 + k(4)*aa^3 ,'cm^2'};
+    end
+
+  % throttle air mass flow
+    let
+      % Flow direction is always from intake to cylinder:
+      pd = p_im;
+      pu = p_amb;
+      Tu = T_amb;
+    in
+      if pd/pu > pr_lam    % Laminar flow
+        flowMode == 1;
+        mdot_thr == S_thr*c1*(pu - pd)/sqrt(Tu);
+      elseif pd/pu > pr_cr % Subsonic flow
+        flowMode == 2;
+        mdot_thr == S_thr*pu*sqrt( c2 * ( (pd/pu)^cb - (pd/pu)^ca) )/sqrt(Tu);
+      else                 % Choked flow
+        flowMode == 3;
+        mdot_thr == S_thr*pu*c3/sqrt(Tu);
+      end
+    end  % let
+
+  % intake manifold
+    der(p_im) == R_air*T_amb/V_im*(mdot_thr - mdot_tocyl);  % pdot=(R*T/V)*mdot
+    assert( p_im > { 1 'kPa' } )
+
+  % mass flow into cylinder
+    % volumetric efficiency
+    let
+      x = value(w, 'rad/s');
+    in
+      eta_spd == s(1) + s(2)*x + s(3)*x^2 + s(4)*x^3;
+    end
+    eta_vol == max(0, min(eta_spd, 1));
+
+    % mass flow to all cylinders
+    mdot_tocyl == max(0, eta_vol*w*V_D*p_im/(2*R_air*T_amb));
+  end
+end

@@ -1,6 +1,10 @@
 # Four-Cylinder Engine Ignition Control Simulation
 
 [![View Four-Cylinder Engine Ignition Control Simulation on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)](https://www.mathworks.com/matlabcentral/fileexchange/69271-four-cylinder-engine-ignition-control-simulation)
+
+[![Open in MATLAB Online](https://www.mathworks.com/images/responsive/global/open-in-matlab-online.svg)](https://matlab.mathworks.com/open/github/v1?repo=guirlo/Simulink-Ignition-Scheduler&project=IgnitionScheduler.prj)
+
+
 [View Four-Cylinder Engine Ignition Control Simulation on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)
 
 Learn more on [Guy on Simulink](https://blogs.mathworks.com/simulink/):

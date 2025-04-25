@@ -10,7 +10,7 @@
 % The system is supposed to reach steady state within a second.  If Pim at t=2
 % and t=3 have a discrepancy greater than 0.1kPa, something is wrong.
 %
-dbstop if error
+% dbstop if error
 tic
 
 savefilename = 'resultsIntakeIsothermal.mat';

@@ -469,12 +469,14 @@ component SI_NA_singleCylinder
   end  % modechart
   end  % modecharts
 
-  function setup
-    Vcyl = {cylinder_volume_mm3_matlab( value(ca0,'rad'), value(V_c,'mm^3'), ...
-              value(a,'mm'), value(l,'mm'), value(B,'mm') ) ...
-            , 'mm^3' };
-  end
-
+  % function setup
+  %   Vcyl = {cylinder_volume_mm3_matlab( value(ca0,'rad'), value(V_c,'mm^3'), ...
+  %             value(a,'mm'), value(l,'mm'), value(B,'mm') ) ...
+  %           , 'mm^3' };
+  % end
+equations (Initial = true)  % initial equations
+    Vcyl == cylinder_volume_sscfcn( ca0, V_c, a, l, B );
+end
   equations  % constitutive equations
 
     % Crank rotational dynamics:

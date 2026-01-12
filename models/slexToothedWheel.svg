@@ -1,0 +1,153 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Creator: fig2dev Version 3.2 Patchlevel 5e -->
+<!-- CreationDate: Mon Dec 19 12:57:38 2016 -->
+<!-- Magnification: 1.050 -->
+<svg	xmlns="http://www.w3.org/2000/svg"
+	xmlns:xlink="http://www.w3.org/1999/xlink"
+        xmlns:d="http://www.mathworks.com/blockgraphics"
+	width="8.8in" height="8.8in"
+	viewBox="-5290 -563 10580 10576"
+        d:options="Resize:FitToBlock">
+<g style="stroke-width:.025in; fill:none">
+<!-- Line -->
+<polygon points="14,4725
+-4073,7091
+-4557,5931
+14,4725
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+fill:#000000;
+"/>
+<!-- Line -->
+<polygon points="8,4731
+-2350,8825
+-3350,8062
+8,4731
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+fill:#000000;
+"/>
+<!-- Line -->
+<polygon points="2,4731
+6,9457
+-1240,9295
+2,4731
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+fill:#000000;
+"/>
+<!-- Line -->
+<polygon points="2,4731
+2367,8822
+1206,9304
+2,4731
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+fill:#000000;
+"/>
+<!-- Line -->
+<polygon points="2,4731
+4727,4727
+4564,5974
+2,4731
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+fill:#000000;
+"/>
+<!-- Line -->
+<polygon points="-4,4743
+2353,649
+3353,1414
+-4,4743
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+fill:#000000;
+"/>
+<!-- Line -->
+<polygon points="-9,4731
+-14,8
+1233,171
+-9,4731
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+fill:#000000;
+"/>
+<!-- Line -->
+<polygon points="8,4725
+-2358,634
+-1196,149
+8,4725
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+fill:#000000;
+"/>
+<!-- Line -->
+<polygon points="8,4725
+-4718,4728
+-4558,3481
+8,4725
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+fill:#000000;
+"/>
+<!-- Line -->
+<polygon points="-4,4731
+4091,7090
+3325,8089
+-4,4731
+" style="stroke:#000000;stroke-width:63;
+stroke-linejoin:miter; stroke-linecap:butt;
+fill:#000000;
+"/>
+<!-- Circle -->
+<circle cx="0" cy="4724" r="4064"
+ style="fill:#7f7f7f;stroke:#000000;stroke-width:48;"/>
+<!-- Circle -->
+<circle cx="0" cy="4724" r="5281"
+ style="stroke:#ffffff;stroke-width:8;"/>
+<!-- Line -->
+<polygon points="8,4725
+-3507,2701
+-2851,1838
+8,4725
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+stroke-dasharray:10 31;fill:#3f3f3f;
+"/>
+<!-- Line -->
+<polygon points="-4,4738
+3520,2696
+3932,3702
+-4,4738
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+stroke-dasharray:10 31;fill:#3f3f3f;
+"/>
+<!-- Arc -->
+<path style="stroke:#000000;stroke-width:79;stroke-linecap:butt;"
+d="M 0,1889 A 2834 2834  0  0  1  2004  6728 " />
+<!-- Circle -->
+<circle cx="0" cy="4724" r="472"
+ style="fill:#3f3f3f;stroke:#000000;stroke-width:48;"/>
+<!-- Line -->
+<polyline points="0,4724
+1,806
+" style="stroke:#000000;stroke-width:8;
+stroke-linejoin:miter; stroke-linecap:butt;
+stroke-dasharray:41 41;"/>
+<!-- Line -->
+<polyline points="1972,6755
+2445,6755
+" style="stroke:#000000;stroke-width:79;
+stroke-linejoin:miter; stroke-linecap:butt;
+"/>
+<!-- Line -->
+<polyline points="1984,6785
+1984,6312
+" style="stroke:#000000;stroke-width:79;
+stroke-linejoin:miter; stroke-linecap:butt;
+"/>
+</g>
+</svg>

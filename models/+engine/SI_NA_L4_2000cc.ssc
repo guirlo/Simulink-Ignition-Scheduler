@@ -40,7 +40,7 @@ component SI_NA_L4_2000cc
     cyl_3   = engine.SI_NA_singleCylinder(ca0={720/4*1,'deg'});
     cyl_4   = engine.SI_NA_singleCylinder(ca0={720/4*2,'deg'});
     exhaust = engine.exhaustThermal();
-    AFR = foundation.physical_signal.sources.Constant(constant = { 14.7, '1' });
+    AFR = foundation.physical_signal.sources.constant(constant = { 14.7, '1' });
   end
 
   connections
